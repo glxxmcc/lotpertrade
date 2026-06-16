@@ -1,3 +1,20 @@
+import os
+from flask import Flask
+from threading import Thread
+
+# Render uchun kichik veb-server
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot ishlamoqda!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
 import telebot
 from telebot import types
 
@@ -25,5 +42,7 @@ def calculate(message):
         bot.reply_to(message, f"📊 *Hisob-kitob natijasi*\n\n💎 Kerakli Lot: `{lot:.4f}`", parse_mode="Markdown")
     except:
         bot.reply_to(message, "❌ Xatolik! 4 ta raqamni probel bilan kiriting.")
-
+if __name__ == "__main__":
+    keep_alive()  # Serverni ishga tushirish
+    # Bu yerda pastda botingizni ishga tushirish kodi (polling) tursin
 bot.polling()
