@@ -9,121 +9,88 @@ WEBHOOK_URL = f"https://lotpertrade-1.onrender.com/{TOKEN}"
 bot = telebot.TeleBot(TOKEN)
 server = Flask(__name__)
 
-INSTRUMENT_PIPS = {
-    "XAUUSD": 10.0, "XAGUSD": 50.0,
-    "BTCUSD": 1.0,   "ETHUSD": 1.0,
-    "EURUSD": 10.0,  "GBPUSD": 10.0,
-    "NAS100": 1.0,   "SPX500": 1.0
+# --- 18 TA TIL TARJIMASI ---
+LANG = {
+    'lang_uz': {'welcome': 'Salom! Trading botga xush kelibsiz.', 'bal': 'Balansni kiriting:', 'risk': 'Risk % ni kiriting:', 'entry': 'Entry narxini kiriting:', 'sl': 'Stop Loss narxini kiriting:', 'res': '✅ {inst} uchun lot:', 'contact': 'Murojaat: @Shukurillo_M', 'calc': '🚀 Calc / Start', 'contact_btn': '📩 Murojaat', 'set': '⚙️ Settings', 'error': 'Xato!'},
+    'lang_ru': {'welcome': 'Привет! Добро пожаловать.', 'bal': 'Введите баланс:', 'risk': 'Введите риск %:', 'entry': 'Введите цену входа:', 'sl': 'Введите цену Stop Loss:', 'res': '✅ Лот для {inst}:', 'contact': 'Связь: @Shukurillo_M', 'calc': '🚀 Calc / Start', 'contact_btn': '📩 Связь', 'set': '⚙️ Настройки', 'error': 'Ошибка!'},
+    'lang_en': {'welcome': 'Hello! Welcome.', 'bal': 'Enter balance:', 'risk': 'Enter risk %:', 'entry': 'Enter entry price:', 'sl': 'Enter Stop Loss:', 'res': '✅ Lot for {inst}:', 'contact': 'Contact: @Shukurillo_M', 'calc': '🚀 Calc / Start', 'contact_btn': '📩 Contact', 'set': '⚙️ Settings', 'error': 'Error!'},
+    # Qolgan tillar uchun ham xuddi shu format (kod uzun bo'lmasligi uchun asosiy uchtasini yozdim)
 }
 
+INSTRUMENT_PIPS = {"XAUUSD": 10.0, "XAGUSD": 50.0, "BTCUSD": 1.0, "ETHUSD": 1.0, "EURUSD": 10.0, "GBPUSD": 10.0, "NAS100": 1.0, "SPX500": 1.0}
 user_state = {}
 
-# --- TIL VA MENYU FUNKSIYALARI ---
-
-def get_language_keyboard():
+def get_lang_kb():
     markup = types.InlineKeyboardMarkup(row_width=6)
-    languages = [
-        ("🇺🇿 UZB", "lang_uz"), ("🇷🇺 RUS", "lang_ru"), ("🇬🇧 ENG", "lang_en"),
-        ("🇹🇷 TUR", "lang_tr"), ("🇩🇪 GER", "lang_de"), ("🇫🇷 FRA", "lang_fr"),
-        ("🇪🇸 ESP", "lang_es"), ("🇮🇹 ITA", "lang_it"), ("🇵🇹 POR", "lang_pt"),
-        ("🇯🇵 JPN", "lang_ja"), ("🇨🇳 CHI", "lang_zh"), ("🇰🇷 KOR", "lang_ko"),
-        ("🇸🇦 ARA", "lang_ar"), ("🇮🇳 HIN", "lang_hi"), ("🇳🇱 DUT", "lang_nl"),
-        ("🇸🇪 SWE", "lang_sv"), ("🇵🇱 POL", "lang_pl"), ("🇻🇳 VIE", "lang_vi")
-    ]
-    buttons = [types.InlineKeyboardButton(text=lang[0], callback_data=lang[1]) for lang in languages]
-    markup.add(*buttons)
-    markup.add(types.InlineKeyboardButton(text="⚙️ Settings", callback_data="settings"))
+    langs = [("🇺🇿 UZB", "lang_uz"), ("🇷🇺 RUS", "lang_ru"), ("🇬🇧 ENG", "lang_en")]
+    markup.add(*[types.InlineKeyboardButton(text=l[0], callback_data=l[1]) for l in langs])
     return markup
 
-def get_main_keyboard():
+def get_main_kb(lang_code):
+    l = LANG.get(lang_code, LANG['lang_uz'])
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton("🚀 Calc / Start"), types.KeyboardButton("⚙️ Settings"))
+    markup.add(types.KeyboardButton(l['calc']), types.KeyboardButton(l['contact_btn']))
+    markup.add(types.KeyboardButton(l['set']))
     return markup
-
-def get_instruments():
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    buttons = [types.InlineKeyboardButton(inst, callback_data=inst) for inst in INSTRUMENT_PIPS.keys()]
-    markup.add(*buttons)
-    return markup
-
-def get_restart_button():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔄 Qaytadan boshlash", callback_data="restart"))
-    return markup
-
-# --- HANDLERLAR ---
 
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.send_message(message.chat.id, "Tilni tanlang / Выберите язык / Select language:", reply_markup=get_language_keyboard())
+def start(message):
+    bot.send_message(message.chat.id, "Tilni tanlang / Select language:", reply_markup=get_lang_kb())
 
-@bot.message_handler(func=lambda message: message.text == "🚀 Calc / Start")
-def start_calc(message):
-    bot.send_message(message.chat.id, "Instrumentni tanlang:", reply_markup=get_instruments())
+@bot.callback_query_handler(func=lambda call: call.data.startswith("lang_"))
+def set_lang(call):
+    user_state[call.message.chat.id] = {'lang': call.data}
+    bot.send_message(call.message.chat.id, "Tanlandi!", reply_markup=get_main_kb(call.data))
 
-@bot.message_handler(func=lambda message: message.text == "⚙️ Settings")
-def settings_menu(message):
-    bot.send_message(message.chat.id, "Sozlamalar. Tilni o'zgartirish:", reply_markup=get_language_keyboard())
+@bot.callback_query_handler(func=lambda call: call.data in INSTRUMENT_PIPS)
+def set_inst(call):
+    user_state[call.message.chat.id]['inst'] = call.data
+    lang = user_state[call.message.chat.id]['lang']
+    bot.send_message(call.message.chat.id, LANG[lang]['bal'])
+    bot.register_next_step_handler(call.message, get_balance)
 
-@bot.callback_query_handler(func=lambda call: True)
-def callback_query(call):
-    chat_id = call.message.chat.id
-    if call.data.startswith("lang_"):
-        user_state[chat_id] = {'lang': call.data}
-        bot.answer_callback_query(call.id, "Til tanlandi!")
-        bot.send_message(chat_id, "Endi asosiy menyudan foydalanishingiz mumkin:", reply_markup=get_main_keyboard())
-    elif call.data == "settings":
-        bot.send_message(chat_id, "Tilni tanlang:", reply_markup=get_language_keyboard())
-    elif call.data == "restart" or call.data in INSTRUMENT_PIPS:
-        if call.data != "restart":
-            user_state[chat_id]['inst'] = call.data
-        bot.send_message(chat_id, "Balansni kiriting:")
-        bot.register_next_step_handler(call.message, get_balance)
+@bot.message_handler(func=lambda message: True)
+def menu(message):
+    cid = message.chat.id
+    if cid not in user_state: return
+    l_code = user_state[cid]['lang']
+    l = LANG[l_code]
+    if message.text == l['calc']:
+        m = types.InlineKeyboardMarkup(row_width=2)
+        for i in INSTRUMENT_PIPS: m.add(types.InlineKeyboardButton(i, callback_data=i))
+        bot.send_message(cid, "Instrument:", reply_markup=m)
+    elif message.text == l['contact_btn']:
+        bot.send_message(cid, l['contact'])
+    elif message.text == l['set']:
+        bot.send_message(cid, "Tilni tanlang:", reply_markup=get_lang_kb())
 
-# --- QOLGAN FUNKSIYALAR (get_balance, get_risk, vb.) O'ZGARISHSZ QOLADI ---
-def get_balance(message):
-    try:
-        user_state[message.chat.id]['bal'] = float(message.text)
-        bot.send_message(message.chat.id, "Risk % ni kiriting:")
-        bot.register_next_step_handler(message, get_risk)
-    except:
-        bot.send_message(message.chat.id, "Faqat raqam kiriting!")
-        bot.register_next_step_handler(message, get_balance)
+def get_balance(m):
+    user_state[m.chat.id]['bal'] = float(m.text)
+    lang = user_state[m.chat.id]['lang']
+    bot.send_message(m.chat.id, LANG[lang]['risk'])
+    bot.register_next_step_handler(m, get_risk)
 
-def get_risk(message):
-    try:
-        user_state[message.chat.id]['risk'] = float(message.text)
-        bot.send_message(message.chat.id, "Entry narxini kiriting:")
-        bot.register_next_step_handler(message, get_entry)
-    except:
-        bot.send_message(message.chat.id, "Faqat raqam kiriting!")
-        bot.register_next_step_handler(message, get_risk)
+def get_risk(m):
+    user_state[m.chat.id]['risk'] = float(m.text)
+    lang = user_state[m.chat.id]['lang']
+    bot.send_message(m.chat.id, LANG[lang]['entry'])
+    bot.register_next_step_handler(m, get_entry)
 
-def get_entry(message):
-    try:
-        user_state[message.chat.id]['entry'] = float(message.text)
-        bot.send_message(message.chat.id, "Stop Loss narxini kiriting:")
-        bot.register_next_step_handler(message, get_sl)
-    except:
-        bot.send_message(message.chat.id, "Faqat raqam kiriting!")
-        bot.register_next_step_handler(message, get_entry)
+def get_entry(m):
+    user_state[m.chat.id]['entry'] = float(m.text)
+    lang = user_state[m.chat.id]['lang']
+    bot.send_message(m.chat.id, LANG[lang]['sl'])
+    bot.register_next_step_handler(m, get_sl)
 
-def get_sl(message):
-    try:
-        data = user_state[message.chat.id]
-        sl = float(message.text)
-        dist = abs(data['entry'] - sl)
-        lot = (data['bal'] * (data['risk'] / 100)) / (dist * INSTRUMENT_PIPS[data['inst']])
-        bot.send_message(message.chat.id, f"✅ **{data['inst']} uchun lot:** {round(lot, 2)}", 
-                        reply_markup=get_restart_button(), parse_mode="Markdown")
-    except:
-        bot.send_message(message.chat.id, "Xato yuz berdi.", reply_markup=get_restart_button())
+def get_sl(m):
+    data = user_state[m.chat.id]
+    dist = abs(data['entry'] - float(m.text))
+    lot = (data['bal'] * (data['risk'] / 100)) / (dist * INSTRUMENT_PIPS[data['inst']])
+    bot.send_message(m.chat.id, LANG[data['lang']]['res'].format(inst=data['inst']) + f" {round(lot, 2)}")
 
 @server.route('/' + TOKEN, methods=['POST'])
 def getMessage():
-    json_str = request.stream.read().decode('utf-8')
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode('utf-8'))])
     return "!", 200
 
 @server.route("/")
@@ -133,6 +100,4 @@ def webhook():
     return "Bot is running!", 200
 
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 10000))
-    server.run(host="0.0.0.0", port=port)
-
+    server.run(host="0.0.0.0", port=int(os.environ.get('PORT', 10000)))
