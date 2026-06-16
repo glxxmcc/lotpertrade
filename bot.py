@@ -1,48 +1,100 @@
-import os
+import telebot
+from telebot import types
+
+# 1. Tokeningni shu yerga qo'y
+TOKEN = '8668561818:AAFRVEpnNhGOMZqO8CQt0TUQz-s102xW0oA'
+bot = telebot.TeleBot(TOKEN)
+
+# 2. Instrumentlar uchun punkt qiymatlari (Brokerga qarab o'zgartirishing mumkin)
+INSTRUMENT_PIPS = {
+    "XAUUSD": 10.0, "XAGUSD": 50.0,
+    "BTCUSD": 1.0,   "ETHUSD": 1.0,
+    "EURUSD": 10.0,  "GBPUSD": 10.0,
+    "NAS100": 1.0,   "SPX500": 1.0
+}
+
+user_data = {}
+
+@bot.message_handler(commands=['start', 'calc'])
+def start_calc(message):
+    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True)
+    buttons = [types.KeyboardButton(inst) for inst in INSTRUMENT_PIPS.keys()]
+    markup.add(*buttons)
+    msg = bot.reply_to(message, "Salom! Instrumentni tanla:", reply_markup=markup)
+    bot.register_next_step_handler(msg, process_instrument)
+
+def process_instrument(message):
+    if message.text not in INSTRUMENT_PIPS:
+        bot.reply_to(message, "Iltimos, tugmalardan birini tanlang.")
+        return start_calc(message)
+    
+    user_data[message.chat.id] = {'instrument': message.text}
+    msg = bot.reply_to(message, "Balansni kiriting (raqamda):")
+    bot.register_next_step_handler(msg, process_balance)
+
+def process_balance(message):
+    try:
+        user_data[message.chat.id]['balance'] = float(message.text)
+        msg = bot.reply_to(message, "Risk foizini kiriting (masalan: 1):")
+        bot.register_next_step_handler(msg, process_risk)
+    except:
+        msg = bot.reply_to(message, "Xato! Faqat raqam kiriting (masalan: 5000):")
+        bot.register_next_step_handler(msg, process_balance)
+
+def process_risk(message):
+    try:
+        user_data[message.chat.id]['risk'] = float(message.text)
+        msg = bot.reply_to(message, "Kirish narxini (Entry) kiriting:")
+        bot.register_next_step_handler(msg, process_entry)
+    except:
+        msg = bot.reply_to(message, "Xato! Raqam kiriting (masalan: 1):")
+        bot.register_next_step_handler(msg, process_risk)
+
+def process_entry(message):
+    try:
+        user_data[message.chat.id]['entry'] = float(message.text)
+        msg = bot.reply_to(message, "Stop Loss narxini kiriting:")
+        bot.register_next_step_handler(msg, process_sl)
+    except:
+        msg = bot.reply_to(message, "Xato! Narxni raqam bilan kiriting:")
+        bot.register_next_step_handler(msg, process_entry)
+
+def process_sl(message):
+    try:
+        data = user_data[message.chat.id]
+        sl = float(message.text)
+        inst = data['instrument']
+        
+        # Hisoblash formulasi
+        risk_money = data['balance'] * (data['risk'] / 100)
+        sl_dist = abs(data['entry'] - sl)
+        pip_val = INSTRUMENT_PIPS[inst]
+        
+        lot = risk_money / (sl_dist * pip_val)
+        
+        result = (f"📊 **Natija** ({inst}):\n"
+                  f"💰 Balans: {data['balance']}$\n"
+                  f"📉 Risk: {data['risk']}% ({risk_money}$)\n"
+                  f"📏 SL masofasi: {sl_dist}\n"
+                  f"✅ **Tavsiya etilgan lot: {round(lot, 2)}**")
+        
+        bot.reply_to(message, result, parse_mode="Markdown")
+    except:
+        bot.reply_to(message, "Xatolik yuz berdi. Iltimos, /calc buyrug'ini boshidan boshlang.")
+
+# Flask qismi (Render uchun)
 from flask import Flask
 from threading import Thread
-
-# Render uchun kichik veb-server
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot ishlamoqda!"
+    return "Bot is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
 
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
-import telebot
-from telebot import types
+t = Thread(target=run)
+t.start()
 
-bot = telebot.TeleBot('8668561818:AAFRVEpnNhGOMZqO8CQt0TUQz-s102xW0oA')
-
-# Juftliklar ro'yxati
-pairs = ["XAUUSD", "XAGUSD", "BTCUSD", "ETHUSD", "EURUSD", "GBPUSD", "NAS100", "SPX500"]
-
-@bot.message_handler(commands=['start'])
-def start(message):
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    buttons = [types.InlineKeyboardButton(pair, callback_data=pair) for pair in pairs]
-    markup.add(*buttons)
-    bot.send_message(message.chat.id, "Analiz qilmoqchi bo'lgan instrumentni tanlang:", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: True)
-def callback_query(call):
-    bot.send_message(call.message.chat.id, f"✅ {call.data} tanlandi.\n\nEndi *Balans, Risk%, Entry, SL* qiymatlarini probel bilan yozing:", parse_mode="Markdown")
-
-@bot.message_handler(func=lambda message: True)
-def calculate(message):
-    try:
-        b, r, e, sl = map(float, message.text.split())
-        lot = (b * (r / 100)) / abs(e - sl)
-        bot.reply_to(message, f"📊 *Hisob-kitob natijasi*\n\n💎 Kerakli Lot: `{lot:.4f}`", parse_mode="Markdown")
-    except:
-        bot.reply_to(message, "❌ Xatolik! 4 ta raqamni probel bilan kiriting.")
-if __name__ == "__main__":
-    keep_alive()  # Serverni ishga tushirish
-    # Bu yerda pastda botingizni ishga tushirish kodi (polling) tursin
 bot.polling()
