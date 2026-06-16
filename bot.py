@@ -1,11 +1,9 @@
 import telebot
 from telebot import types
 
-# 1. Tokeningni shu yerga qo'y
 TOKEN = '8668561818:AAFRVEpnNhGOMZqO8CQt0TUQz-s102xW0oA'
 bot = telebot.TeleBot(TOKEN)
 
-# 2. Instrumentlar uchun punkt qiymatlari (Brokerga qarab o'zgartirishing mumkin)
 INSTRUMENT_PIPS = {
     "XAUUSD": 10.0, "XAGUSD": 50.0,
     "BTCUSD": 1.0,   "ETHUSD": 1.0,
@@ -13,88 +11,93 @@ INSTRUMENT_PIPS = {
     "NAS100": 1.0,   "SPX500": 1.0
 }
 
-user_data = {}
+user_state = {}
 
-@bot.message_handler(commands=['start', 'calc'])
-def start_calc(message):
-    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True)
-    buttons = [types.KeyboardButton(inst) for inst in INSTRUMENT_PIPS.keys()]
+# Asosiy klaviatura (Murojaat tugmasi bilan)
+def get_main_keyboard():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(types.KeyboardButton("🚀 Calc / Start"), types.KeyboardButton("📩 Murojaat"))
+    return markup
+
+# Instrument tanlash tugmalari
+def get_instruments():
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    buttons = [types.InlineKeyboardButton(inst, callback_data=inst) for inst in INSTRUMENT_PIPS.keys()]
     markup.add(*buttons)
-    msg = bot.reply_to(message, "Salom! Instrumentni tanla:", reply_markup=markup)
-    bot.register_next_step_handler(msg, process_instrument)
+    return markup
 
-def process_instrument(message):
-    if message.text not in INSTRUMENT_PIPS:
-        bot.reply_to(message, "Iltimos, tugmalardan birini tanlang.")
-        return start_calc(message)
-    
-    user_data[message.chat.id] = {'instrument': message.text}
-    msg = bot.reply_to(message, "Balansni kiriting (raqamda):")
-    bot.register_next_step_handler(msg, process_balance)
+# Restart tugmasi
+def get_restart_button():
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🔄 Qaytadan boshlash", callback_data="restart"))
+    return markup
 
-def process_balance(message):
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.send_message(message.chat.id, "Salom! Trading botga xush kelibsiz.", reply_markup=get_main_keyboard())
+
+@bot.message_handler(func=lambda message: message.text == "🚀 Calc / Start")
+def start_calc(message):
+    bot.send_message(message.chat.id, "Instrumentni tanlang:", reply_markup=get_instruments())
+
+@bot.message_handler(func=lambda message: message.text == "📩 Murojaat")
+def contact_admin(message):
+    bot.send_message(message.chat.id, "Taklif va murojaatlar uchun: @Shukurillo_M")
+
+@bot.callback_query_handler(func=lambda call: True)
+def callback_query(call):
+    chat_id = call.message.chat.id
+    if call.data == "restart" or call.data in INSTRUMENT_PIPS:
+        if call.data != "restart":
+            user_state[chat_id] = {'inst': call.data}
+        bot.send_message(chat_id, "Balansni kiriting:")
+        bot.register_next_step_handler(call.message, get_balance)
+
+def get_balance(message):
     try:
-        user_data[message.chat.id]['balance'] = float(message.text)
-        msg = bot.reply_to(message, "Risk foizini kiriting (masalan: 1):")
-        bot.register_next_step_handler(msg, process_risk)
+        user_state[message.chat.id]['bal'] = float(message.text)
+        bot.send_message(message.chat.id, "Risk % ni kiriting:")
+        bot.register_next_step_handler(message, get_risk)
     except:
-        msg = bot.reply_to(message, "Xato! Faqat raqam kiriting (masalan: 5000):")
-        bot.register_next_step_handler(msg, process_balance)
+        bot.send_message(message.chat.id, "Faqat raqam kiriting!")
+        bot.register_next_step_handler(message, get_balance)
 
-def process_risk(message):
+def get_risk(message):
     try:
-        user_data[message.chat.id]['risk'] = float(message.text)
-        msg = bot.reply_to(message, "Kirish narxini (Entry) kiriting:")
-        bot.register_next_step_handler(msg, process_entry)
+        user_state[message.chat.id]['risk'] = float(message.text)
+        bot.send_message(message.chat.id, "Entry narxini kiriting:")
+        bot.register_next_step_handler(message, get_entry)
     except:
-        msg = bot.reply_to(message, "Xato! Raqam kiriting (masalan: 1):")
-        bot.register_next_step_handler(msg, process_risk)
+        bot.send_message(message.chat.id, "Faqat raqam kiriting!")
+        bot.register_next_step_handler(message, get_risk)
 
-def process_entry(message):
+def get_entry(message):
     try:
-        user_data[message.chat.id]['entry'] = float(message.text)
-        msg = bot.reply_to(message, "Stop Loss narxini kiriting:")
-        bot.register_next_step_handler(msg, process_sl)
+        user_state[message.chat.id]['entry'] = float(message.text)
+        bot.send_message(message.chat.id, "Stop Loss narxini kiriting:")
+        bot.register_next_step_handler(message, get_sl)
     except:
-        msg = bot.reply_to(message, "Xato! Narxni raqam bilan kiriting:")
-        bot.register_next_step_handler(msg, process_entry)
+        bot.send_message(message.chat.id, "Faqat raqam kiriting!")
+        bot.register_next_step_handler(message, get_entry)
 
-def process_sl(message):
+def get_sl(message):
     try:
-        data = user_data[message.chat.id]
+        data = user_state[message.chat.id]
         sl = float(message.text)
-        inst = data['instrument']
+        dist = abs(data['entry'] - sl)
+        lot = (data['bal'] * (data['risk'] / 100)) / (dist * INSTRUMENT_PIPS[data['inst']])
         
-        # Hisoblash formulasi
-        risk_money = data['balance'] * (data['risk'] / 100)
-        sl_dist = abs(data['entry'] - sl)
-        pip_val = INSTRUMENT_PIPS[inst]
-        
-        lot = risk_money / (sl_dist * pip_val)
-        
-        result = (f"📊 **Natija** ({inst}):\n"
-                  f"💰 Balans: {data['balance']}$\n"
-                  f"📉 Risk: {data['risk']}% ({risk_money}$)\n"
-                  f"📏 SL masofasi: {sl_dist}\n"
-                  f"✅ **Tavsiya etilgan lot: {round(lot, 2)}**")
-        
-        bot.reply_to(message, result, parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"✅ **{data['inst']} uchun lot:** {round(lot, 2)}", 
+                         reply_markup=get_restart_button(), parse_mode="Markdown")
     except:
-        bot.reply_to(message, "Xatolik yuz berdi. Iltimos, /calc buyrug'ini boshidan boshlang.")
+        bot.send_message(message.chat.id, "Xato yuz berdi.", reply_markup=get_restart_button())
 
-# Flask qismi (Render uchun)
+# Flask server qismi (render uchun)
 from flask import Flask
 from threading import Thread
 app = Flask('')
-
 @app.route('/')
-def home():
-    return "Bot is running!"
-
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
-t = Thread(target=run)
-t.start()
+def home(): return "Bot is running!"
+Thread(target=lambda: app.run(host='0.0.0.0', port=8080)).start()
 
 bot.polling()
