@@ -1,7 +1,7 @@
 import telebot
 from telebot import types
 
-bot = telebot.TeleBot('TOKENINGIZNI_SHU_YERGA_YOZING')
+bot = telebot.TeleBot('8668561818:AAFRVEpnNhGOMZqO8CQt0TUQz-s102xW0oA')
 
 # Juftliklar ro'yxati
 pairs = ["XAUUSD", "XAGUSD", "BTCUSD", "ETHUSD", "EURUSD", "GBPUSD", "NAS100", "SPX500"]
