@@ -1,7 +1,7 @@
 import telebot
 from telebot import types
 
-TOKEN = '8668561818:AAFRVEpnNhGOMZqO8CQt0TUQz-s102xW0oA'
+TOKEN = '8798488885:AAGiVazwD7NM07RNmh7aVfnkV5J4pDtM_fY'
 bot = telebot.TeleBot(TOKEN)
 
 INSTRUMENT_PIPS = {
