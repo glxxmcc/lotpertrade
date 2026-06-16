@@ -18,11 +18,26 @@ INSTRUMENT_PIPS = {
 
 user_state = {}
 
-# --- FUNKSIYALAR VA HANDLERLAR ---
+# --- TIL VA MENYU FUNKSIYALARI ---
+
+def get_language_keyboard():
+    markup = types.InlineKeyboardMarkup(row_width=6)
+    languages = [
+        ("🇺🇿 UZB", "lang_uz"), ("🇷🇺 RUS", "lang_ru"), ("🇬🇧 ENG", "lang_en"),
+        ("🇹🇷 TUR", "lang_tr"), ("🇩🇪 GER", "lang_de"), ("🇫🇷 FRA", "lang_fr"),
+        ("🇪🇸 ESP", "lang_es"), ("🇮🇹 ITA", "lang_it"), ("🇵🇹 POR", "lang_pt"),
+        ("🇯🇵 JPN", "lang_ja"), ("🇨🇳 CHI", "lang_zh"), ("🇰🇷 KOR", "lang_ko"),
+        ("🇸🇦 ARA", "lang_ar"), ("🇮🇳 HIN", "lang_hi"), ("🇳🇱 DUT", "lang_nl"),
+        ("🇸🇪 SWE", "lang_sv"), ("🇵🇱 POL", "lang_pl"), ("🇻🇳 VIE", "lang_vi")
+    ]
+    buttons = [types.InlineKeyboardButton(text=lang[0], callback_data=lang[1]) for lang in languages]
+    markup.add(*buttons)
+    markup.add(types.InlineKeyboardButton(text="⚙️ Settings", callback_data="settings"))
+    return markup
 
 def get_main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton("🚀 Calc / Start"), types.KeyboardButton("📩 Murojaat"))
+    markup.add(types.KeyboardButton("🚀 Calc / Start"), types.KeyboardButton("⚙️ Settings"))
     return markup
 
 def get_instruments():
@@ -36,27 +51,36 @@ def get_restart_button():
     markup.add(types.InlineKeyboardButton("🔄 Qaytadan boshlash", callback_data="restart"))
     return markup
 
+# --- HANDLERLAR ---
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.send_message(message.chat.id, "Salom! Trading botga xush kelibsiz.", reply_markup=get_main_keyboard())
+    bot.send_message(message.chat.id, "Tilni tanlang / Выберите язык / Select language:", reply_markup=get_language_keyboard())
 
 @bot.message_handler(func=lambda message: message.text == "🚀 Calc / Start")
 def start_calc(message):
     bot.send_message(message.chat.id, "Instrumentni tanlang:", reply_markup=get_instruments())
 
-@bot.message_handler(func=lambda message: message.text == "📩 Murojaat")
-def contact_admin(message):
-    bot.send_message(message.chat.id, "Taklif va murojaatlar uchun: @Shukurillo_M")
+@bot.message_handler(func=lambda message: message.text == "⚙️ Settings")
+def settings_menu(message):
+    bot.send_message(message.chat.id, "Sozlamalar. Tilni o'zgartirish:", reply_markup=get_language_keyboard())
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     chat_id = call.message.chat.id
-    if call.data == "restart" or call.data in INSTRUMENT_PIPS:
+    if call.data.startswith("lang_"):
+        user_state[chat_id] = {'lang': call.data}
+        bot.answer_callback_query(call.id, "Til tanlandi!")
+        bot.send_message(chat_id, "Endi asosiy menyudan foydalanishingiz mumkin:", reply_markup=get_main_keyboard())
+    elif call.data == "settings":
+        bot.send_message(chat_id, "Tilni tanlang:", reply_markup=get_language_keyboard())
+    elif call.data == "restart" or call.data in INSTRUMENT_PIPS:
         if call.data != "restart":
-            user_state[chat_id] = {'inst': call.data}
+            user_state[chat_id]['inst'] = call.data
         bot.send_message(chat_id, "Balansni kiriting:")
         bot.register_next_step_handler(call.message, get_balance)
 
+# --- QOLGAN FUNKSIYALAR (get_balance, get_risk, vb.) O'ZGARISHSZ QOLADI ---
 def get_balance(message):
     try:
         user_state[message.chat.id]['bal'] = float(message.text)
@@ -95,8 +119,6 @@ def get_sl(message):
     except:
         bot.send_message(message.chat.id, "Xato yuz berdi.", reply_markup=get_restart_button())
 
-# --- WEBHOOK QISMI (24/7 UCHUN) ---
-
 @server.route('/' + TOKEN, methods=['POST'])
 def getMessage():
     json_str = request.stream.read().decode('utf-8')
@@ -113,3 +135,4 @@ def webhook():
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 10000))
     server.run(host="0.0.0.0", port=port)
+
