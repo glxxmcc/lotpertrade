@@ -3,8 +3,9 @@ import telebot
 from telebot import types
 from flask import Flask, request
 
-# Tokeningizni Render "Environment Variables" qismiga API_TOKEN nomi bilan qo'shing
-TOKEN = os.environ.get('API_TOKEN', '8798488885:AAGiVazwD7NM07RNmh7aVfnkV5J4pDtM_fY')
+TOKEN = '8798488885:AAGiVazwD7NM07RNmh7aVfnkV5J4pDtM_fY'
+WEBHOOK_URL = f"https://lotpertrade-1.onrender.com/{TOKEN}"
+
 bot = telebot.TeleBot(TOKEN)
 server = Flask(__name__)
 
@@ -17,6 +18,8 @@ INSTRUMENT_PIPS = {
 
 user_state = {}
 
+# --- FUNKSIYALAR VA HANDLERLAR ---
+
 def get_main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("🚀 Calc / Start"), types.KeyboardButton("📩 Murojaat"))
@@ -28,6 +31,11 @@ def get_instruments():
     markup.add(*buttons)
     return markup
 
+def get_restart_button():
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🔄 Qaytadan boshlash", callback_data="restart"))
+    return markup
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     bot.send_message(message.chat.id, "Salom! Trading botga xush kelibsiz.", reply_markup=get_main_keyboard())
@@ -36,11 +44,16 @@ def send_welcome(message):
 def start_calc(message):
     bot.send_message(message.chat.id, "Instrumentni tanlang:", reply_markup=get_instruments())
 
+@bot.message_handler(func=lambda message: message.text == "📩 Murojaat")
+def contact_admin(message):
+    bot.send_message(message.chat.id, "Taklif va murojaatlar uchun: @Shukurillo_M")
+
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     chat_id = call.message.chat.id
-    if call.data in INSTRUMENT_PIPS:
-        user_state[chat_id] = {'inst': call.data}
+    if call.data == "restart" or call.data in INSTRUMENT_PIPS:
+        if call.data != "restart":
+            user_state[chat_id] = {'inst': call.data}
         bot.send_message(chat_id, "Balansni kiriting:")
         bot.register_next_step_handler(call.message, get_balance)
 
@@ -77,11 +90,13 @@ def get_sl(message):
         sl = float(message.text)
         dist = abs(data['entry'] - sl)
         lot = (data['bal'] * (data['risk'] / 100)) / (dist * INSTRUMENT_PIPS[data['inst']])
-        bot.send_message(message.chat.id, f"✅ **{data['inst']} uchun lot:** {round(lot, 2)}", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"✅ **{data['inst']} uchun lot:** {round(lot, 2)}", 
+                        reply_markup=get_restart_button(), parse_mode="Markdown")
     except:
-        bot.send_message(message.chat.id, "Xato yuz berdi. Qaytadan /start bosing.")
+        bot.send_message(message.chat.id, "Xato yuz berdi.", reply_markup=get_restart_button())
 
-# --- WEBHOOK QISMI (24/7 ishlashi uchun) ---
+# --- WEBHOOK QISMI (24/7 UCHUN) ---
+
 @server.route('/' + TOKEN, methods=['POST'])
 def getMessage():
     json_str = request.stream.read().decode('utf-8')
@@ -92,8 +107,9 @@ def getMessage():
 @server.route("/")
 def webhook():
     bot.remove_webhook()
-    bot.set_webhook(url='https://<SIZNING-BOT-URL>.onrender.com/' + TOKEN)
+    bot.set_webhook(url=WEBHOOK_URL)
     return "Bot is running!", 200
 
 if __name__ == "__main__":
-    server.run(host="0.0.0.0", port=int(os.environ.get('PORT', 8080)))
+    port = int(os.environ.get('PORT', 10000))
+    server.run(host="0.0.0.0", port=port)
