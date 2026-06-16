@@ -1,8 +1,12 @@
+import os
 import telebot
 from telebot import types
+from flask import Flask, request
 
-TOKEN = '8798488885:AAGiVazwD7NM07RNmh7aVfnkV5J4pDtM_fY'
+# Tokeningizni Render "Environment Variables" qismiga API_TOKEN nomi bilan qo'shing
+TOKEN = os.environ.get('API_TOKEN', '8798488885:AAGiVazwD7NM07RNmh7aVfnkV5J4pDtM_fY')
 bot = telebot.TeleBot(TOKEN)
+server = Flask(__name__)
 
 INSTRUMENT_PIPS = {
     "XAUUSD": 10.0, "XAGUSD": 50.0,
@@ -13,23 +17,15 @@ INSTRUMENT_PIPS = {
 
 user_state = {}
 
-# Asosiy klaviatura (Murojaat tugmasi bilan)
 def get_main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("🚀 Calc / Start"), types.KeyboardButton("📩 Murojaat"))
     return markup
 
-# Instrument tanlash tugmalari
 def get_instruments():
     markup = types.InlineKeyboardMarkup(row_width=2)
     buttons = [types.InlineKeyboardButton(inst, callback_data=inst) for inst in INSTRUMENT_PIPS.keys()]
     markup.add(*buttons)
-    return markup
-
-# Restart tugmasi
-def get_restart_button():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔄 Qaytadan boshlash", callback_data="restart"))
     return markup
 
 @bot.message_handler(commands=['start'])
@@ -40,16 +36,11 @@ def send_welcome(message):
 def start_calc(message):
     bot.send_message(message.chat.id, "Instrumentni tanlang:", reply_markup=get_instruments())
 
-@bot.message_handler(func=lambda message: message.text == "📩 Murojaat")
-def contact_admin(message):
-    bot.send_message(message.chat.id, "Taklif va murojaatlar uchun: @Shukurillo_M")
-
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     chat_id = call.message.chat.id
-    if call.data == "restart" or call.data in INSTRUMENT_PIPS:
-        if call.data != "restart":
-            user_state[chat_id] = {'inst': call.data}
+    if call.data in INSTRUMENT_PIPS:
+        user_state[chat_id] = {'inst': call.data}
         bot.send_message(chat_id, "Balansni kiriting:")
         bot.register_next_step_handler(call.message, get_balance)
 
@@ -86,18 +77,23 @@ def get_sl(message):
         sl = float(message.text)
         dist = abs(data['entry'] - sl)
         lot = (data['bal'] * (data['risk'] / 100)) / (dist * INSTRUMENT_PIPS[data['inst']])
-        
-        bot.send_message(message.chat.id, f"✅ **{data['inst']} uchun lot:** {round(lot, 2)}", 
-                         reply_markup=get_restart_button(), parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"✅ **{data['inst']} uchun lot:** {round(lot, 2)}", parse_mode="Markdown")
     except:
-        bot.send_message(message.chat.id, "Xato yuz berdi.", reply_markup=get_restart_button())
+        bot.send_message(message.chat.id, "Xato yuz berdi. Qaytadan /start bosing.")
 
-# Flask server qismi (render uchun)
-from flask import Flask
-from threading import Thread
-app = Flask('')
-@app.route('/')
-def home(): return "Bot is running!"
-Thread(target=lambda: app.run(host='0.0.0.0', port=8080)).start()
+# --- WEBHOOK QISMI (24/7 ishlashi uchun) ---
+@server.route('/' + TOKEN, methods=['POST'])
+def getMessage():
+    json_str = request.stream.read().decode('utf-8')
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "!", 200
 
-bot.polling()
+@server.route("/")
+def webhook():
+    bot.remove_webhook()
+    bot.set_webhook(url='https://<SIZNING-BOT-URL>.onrender.com/' + TOKEN)
+    return "Bot is running!", 200
+
+if __name__ == "__main__":
+    server.run(host="0.0.0.0", port=int(os.environ.get('PORT', 8080)))
