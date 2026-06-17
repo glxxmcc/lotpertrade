@@ -1,4 +1,6 @@
 import os
+import time
+import random
 import telebot
 from telebot import types
 from flask import Flask, request
@@ -14,235 +16,334 @@ WEBHOOK_URL = f"{RENDER_URL}/{TOKEN}"
 bot = telebot.TeleBot(TOKEN)
 server = Flask(__name__)
 
+# Hisoblash tugagandan keyin chiqadigan emoji (random tanlanadi)
+CALC_EMOJIS = ["💣", "🏁"]
+
 # --- 12 TA TIL TARJIMASI ---
 LANG = {
     'lang_uz': {
         'name': "🇺🇿 O'zbek",
-        'welcome': "Tilni tanlang / Select language:",
         'chosen': "✅ Til tanlandi: O'zbek",
-        'bal': "💰 Balansni kiriting (masalan: 1000):",
-        'risk': "📊 Risk foizini kiriting (masalan: 2):",
-        'entry': "📈 Entry (kirish) narxini kiriting:",
-        'sl': "🛑 Stop Loss narxini kiriting:",
-        'res': "✅ {inst} uchun lot hajmi:",
-        'contact': "📩 Murojaat uchun: @Shukurillo_M",
+        'bal': "💰 Keling, hisoblab beraman! Avval balansingizni kiriting (masalan: 1000):",
+        'risk': "📊 Ajoyib! Endi risk foizini kiriting (masalan: 2):",
+        'entry': "📈 Zo'r! Entry (kirish) narxini kiriting:",
+        'sl': "🛑 Yaxshi, endi Stop Loss narxini kiriting:",
+        'res': "✅ {inst} uchun lot hajmingiz tayyor:",
+        'contact': "📩 Savol yoki taklif bormi? Bemalol yozing: @Shukurillo_M",
         'calc': "🚀 Hisoblash",
         'contact_btn': "📩 Murojaat",
         'set': "⚙️ Sozlamalar",
-        'instrument': "Instrumentni tanlang:",
-        'err_number': "⚠️ Iltimos, faqat raqam kiriting (masalan: 1000 yoki 1850.5)",
-        'err_zero_dist': "⚠️ Entry va Stop Loss narxlari bir xil bo'lishi mumkin emas. Qaytadan urinib ko'ring.",
-        'err_state': "⚠️ Iltimos, avval /start buyrug'ini bosing.",
-        'err_positive': "⚠️ Qiymat noldan katta bo'lishi kerak.",
+        'instrument': "Qaysi instrument bo'yicha hisoblaymiz? 👇",
+        'err_number': "🤔 Bu raqamga o'xshamadi-ku! Iltimos, faqat son kiriting (masalan: 1000 yoki 1850.5)",
+        'err_zero_dist': "⚠️ Entry va Stop Loss narxi bir xil bo'lib qoldi. Birozgina farq bilan qaytadan kiriting 🙂",
+        'err_state': "👋 Avval /start buyrug'ini bosing, birga boshlaymiz!",
+        'err_positive': "🤔 Qiymat noldan katta bo'lishi kerak. Qaytadan urinib ko'ramizmi?",
+        'ask_tp': "🎯 Ajoyib hisoblandi! Take Profit narxini ham kiritib, Risk:Reward nisbatini ko'rib qo'yamizmi?",
+        'tp_yes': "✅ Ha, ko'raman",
+        'tp_no': "❌ Yo'q, shu yetarli",
+        'enter_tp': "🎯 Take Profit narxini kiriting:",
+        'rr_great': "🔥 Zo'r nisbat! Bunday savdolar uzoq muddatda yaxshi natija beradi.",
+        'rr_good': "💪 Yaxshi nisbat, shu tartibda davom eting!",
+        'rr_low': "🙂 Nisbat hozircha pastroq. Imkon bo'lsa, TP'ni biroz uzoqroqqa qo'yishni o'ylab ko'ring.",
+        'rr_label': "📐 Risk:Reward nisbati — 1:{rr}",
+        'done': "Yana hisoblash uchun \"🚀 Hisoblash\" tugmasini bosing 👇",
     },
     'lang_ru': {
         'name': "🇷🇺 Русский",
-        'welcome': "Tilni tanlang / Select language:",
         'chosen': "✅ Язык выбран: Русский",
-        'bal': "💰 Введите баланс (например: 1000):",
-        'risk': "📊 Введите риск в % (например: 2):",
-        'entry': "📈 Введите цену входа (Entry):",
-        'sl': "🛑 Введите цену Stop Loss:",
-        'res': "✅ Лот для {inst}:",
-        'contact': "📩 Связь: @Shukurillo_M",
+        'bal': "💰 Отлично, начнём! Введите ваш баланс (например: 1000):",
+        'risk': "📊 Супер! Теперь введите риск в % (например: 2):",
+        'entry': "📈 Хорошо! Введите цену входа (Entry):",
+        'sl': "🛑 Принято, теперь введите цену Stop Loss:",
+        'res': "✅ Размер лота для {inst} готов:",
+        'contact': "📩 Есть вопросы или предложения? Пишите: @Shukurillo_M",
         'calc': "🚀 Рассчитать",
         'contact_btn': "📩 Связь",
         'set': "⚙️ Настройки",
-        'instrument': "Выберите инструмент:",
-        'err_number': "⚠️ Пожалуйста, введите только число (например: 1000 или 1850.5)",
-        'err_zero_dist': "⚠️ Цены Entry и Stop Loss не могут быть одинаковыми. Попробуйте снова.",
-        'err_state': "⚠️ Пожалуйста, сначала нажмите /start.",
-        'err_positive': "⚠️ Значение должно быть больше нуля.",
+        'instrument': "По какому инструменту считаем? 👇",
+        'err_number': "🤔 Это не похоже на число! Введите, пожалуйста, число (например: 1000 или 1850.5)",
+        'err_zero_dist': "⚠️ Цены Entry и Stop Loss совпали. Введите немного другое значение 🙂",
+        'err_state': "👋 Сначала нажмите /start, начнём вместе!",
+        'err_positive': "🤔 Значение должно быть больше нуля. Попробуем снова?",
+        'ask_tp': "🎯 Отличный расчёт! Хотите также ввести Take Profit и увидеть Risk:Reward?",
+        'tp_yes': "✅ Да, хочу",
+        'tp_no': "❌ Нет, этого достаточно",
+        'enter_tp': "🎯 Введите цену Take Profit:",
+        'rr_great': "🔥 Отличное соотношение! Такие сделки выгодны в долгосрочной перспективе.",
+        'rr_good': "💪 Хорошее соотношение, продолжайте в том же духе!",
+        'rr_low': "🙂 Соотношение пока низкое. Возможно, стоит увеличить дистанцию до TP.",
+        'rr_label': "📐 Соотношение Risk:Reward — 1:{rr}",
+        'done': "Хотите посчитать ещё раз? Нажмите \"🚀 Рассчитать\" 👇",
     },
     'lang_en': {
         'name': "🇬🇧 English",
-        'welcome': "Tilni tanlang / Select language:",
         'chosen': "✅ Language selected: English",
-        'bal': "💰 Enter your balance (e.g. 1000):",
-        'risk': "📊 Enter risk % (e.g. 2):",
-        'entry': "📈 Enter Entry price:",
-        'sl': "🛑 Enter Stop Loss price:",
-        'res': "✅ Lot size for {inst}:",
-        'contact': "📩 Contact: @Shukurillo_M",
+        'bal': "💰 Great, let's get started! Enter your balance (e.g. 1000):",
+        'risk': "📊 Awesome! Now enter your risk % (e.g. 2):",
+        'entry': "📈 Nice! Enter the Entry price:",
+        'sl': "🛑 Got it, now enter the Stop Loss price:",
+        'res': "✅ Your lot size for {inst} is ready:",
+        'contact': "📩 Questions or suggestions? Feel free to message: @Shukurillo_M",
         'calc': "🚀 Calculate",
         'contact_btn': "📩 Contact",
         'set': "⚙️ Settings",
-        'instrument': "Select instrument:",
-        'err_number': "⚠️ Please enter a valid number (e.g. 1000 or 1850.5)",
-        'err_zero_dist': "⚠️ Entry and Stop Loss prices cannot be the same. Try again.",
-        'err_state': "⚠️ Please press /start first.",
-        'err_positive': "⚠️ Value must be greater than zero.",
+        'instrument': "Which instrument are we calculating for? 👇",
+        'err_number': "🤔 That doesn't look like a number! Please enter a valid number (e.g. 1000 or 1850.5)",
+        'err_zero_dist': "⚠️ Entry and Stop Loss prices are the same. Please enter a slightly different value 🙂",
+        'err_state': "👋 Please press /start first, let's begin together!",
+        'err_positive': "🤔 The value must be greater than zero. Shall we try again?",
+        'ask_tp': "🎯 Great calculation! Want to also enter Take Profit and see your Risk:Reward ratio?",
+        'tp_yes': "✅ Yes, show me",
+        'tp_no': "❌ No, that's enough",
+        'enter_tp': "🎯 Enter the Take Profit price:",
+        'rr_great': "🔥 Excellent ratio! Trades like this pay off in the long run.",
+        'rr_good': "💪 Good ratio, keep it up!",
+        'rr_low': "🙂 The ratio is a bit low for now. Consider placing your TP a bit further away.",
+        'rr_label': "📐 Risk:Reward ratio — 1:{rr}",
+        'done': "Want to calculate again? Tap \"🚀 Calculate\" 👇",
     },
     'lang_tr': {
         'name': "🇹🇷 Türkçe",
-        'welcome': "Tilni tanlang / Select language:",
         'chosen': "✅ Dil seçildi: Türkçe",
-        'bal': "💰 Bakiyenizi girin (örnek: 1000):",
-        'risk': "📊 Risk yüzdesini girin (örnek: 2):",
-        'entry': "📈 Giriş (Entry) fiyatını girin:",
-        'sl': "🛑 Stop Loss fiyatını girin:",
-        'res': "✅ {inst} için lot büyüklüğü:",
-        'contact': "📩 İletişim: @Shukurillo_M",
+        'bal': "💰 Harika, başlayalım! Bakiyenizi girin (örnek: 1000):",
+        'risk': "📊 Süper! Şimdi risk yüzdesini girin (örnek: 2):",
+        'entry': "📈 Güzel! Giriş (Entry) fiyatını girin:",
+        'sl': "🛑 Anlaşıldı, şimdi Stop Loss fiyatını girin:",
+        'res': "✅ {inst} için lot büyüklüğünüz hazır:",
+        'contact': "📩 Sorunuz mu var? Yazabilirsiniz: @Shukurillo_M",
         'calc': "🚀 Hesapla",
         'contact_btn': "📩 İletişim",
         'set': "⚙️ Ayarlar",
-        'instrument': "Enstrüman seçin:",
-        'err_number': "⚠️ Lütfen geçerli bir sayı girin (örnek: 1000 veya 1850.5)",
-        'err_zero_dist': "⚠️ Entry ve Stop Loss fiyatları aynı olamaz. Tekrar deneyin.",
-        'err_state': "⚠️ Lütfen önce /start komutunu çalıştırın.",
-        'err_positive': "⚠️ Değer sıfırdan büyük olmalıdır.",
+        'instrument': "Hangi enstrüman için hesaplayalım? 👇",
+        'err_number': "🤔 Bu bir sayıya benzemiyor! Lütfen geçerli bir sayı girin (örnek: 1000 veya 1850.5)",
+        'err_zero_dist': "⚠️ Entry ve Stop Loss fiyatları aynı oldu. Lütfen biraz farklı bir değer girin 🙂",
+        'err_state': "👋 Önce /start komutunu çalıştırın, birlikte başlayalım!",
+        'err_positive': "🤔 Değer sıfırdan büyük olmalı. Tekrar deneyelim mi?",
+        'ask_tp': "🎯 Harika hesaplandı! Take Profit girip Risk:Reward oranını da görmek ister misiniz?",
+        'tp_yes': "✅ Evet, göster",
+        'tp_no': "❌ Hayır, bu yeterli",
+        'enter_tp': "🎯 Take Profit fiyatını girin:",
+        'rr_great': "🔥 Mükemmel oran! Böyle işlemler uzun vadede kazandırır.",
+        'rr_good': "💪 İyi bir oran, böyle devam edin!",
+        'rr_low': "🙂 Oran şimdilik biraz düşük. TP'yi biraz daha uzağa koymayı düşünebilirsiniz.",
+        'rr_label': "📐 Risk:Reward oranı — 1:{rr}",
+        'done': "Tekrar hesaplamak için \"🚀 Hesapla\" butonuna basın 👇",
     },
     'lang_ar': {
         'name': "🇸🇦 العربية",
-        'welcome': "Tilni tanlang / Select language:",
         'chosen': "✅ تم اختيار اللغة: العربية",
-        'bal': "💰 أدخل رصيدك (مثال: 1000):",
-        'risk': "📊 أدخل نسبة المخاطرة % (مثال: 2):",
-        'entry': "📈 أدخل سعر الدخول (Entry):",
-        'sl': "🛑 أدخل سعر وقف الخسارة (Stop Loss):",
-        'res': "✅ حجم اللوت لـ {inst}:",
-        'contact': "📩 للتواصل: @Shukurillo_M",
+        'bal': "💰 رائع، لنبدأ! أدخل رصيدك (مثال: 1000):",
+        'risk': "📊 ممتاز! الآن أدخل نسبة المخاطرة % (مثال: 2):",
+        'entry': "📈 جيد! أدخل سعر الدخول (Entry):",
+        'sl': "🛑 تم، الآن أدخل سعر وقف الخسارة (Stop Loss):",
+        'res': "✅ حجم اللوت لـ {inst} جاهز:",
+        'contact': "📩 لديك سؤال؟ تواصل معنا: @Shukurillo_M",
         'calc': "🚀 احساب",
         'contact_btn': "📩 تواصل",
         'set': "⚙️ الإعدادات",
-        'instrument': "اختر الأداة:",
-        'err_number': "⚠️ يرجى إدخال رقم صحيح (مثال: 1000 أو 1850.5)",
-        'err_zero_dist': "⚠️ لا يمكن أن يكون سعر الدخول وسعر وقف الخسارة متساويين. حاول مرة أخرى.",
-        'err_state': "⚠️ يرجى الضغط على /start أولاً.",
-        'err_positive': "⚠️ يجب أن تكون القيمة أكبر من الصفر.",
+        'instrument': "لأي أداة نحسب؟ 👇",
+        'err_number': "🤔 هذا لا يشبه رقمًا! يرجى إدخال رقم صحيح (مثال: 1000 أو 1850.5)",
+        'err_zero_dist': "⚠️ سعر الدخول وسعر وقف الخسارة متطابقان. أدخل قيمة مختلفة قليلاً 🙂",
+        'err_state': "👋 يرجى الضغط على /start أولاً، لنبدأ معًا!",
+        'err_positive': "🤔 يجب أن تكون القيمة أكبر من الصفر. هل نحاول مرة أخرى؟",
+        'ask_tp': "🎯 حساب رائع! هل تريد إدخال Take Profit ورؤية نسبة Risk:Reward؟",
+        'tp_yes': "✅ نعم، أرني",
+        'tp_no': "❌ لا، هذا يكفي",
+        'enter_tp': "🎯 أدخل سعر Take Profit:",
+        'rr_great': "🔥 نسبة رائعة! مثل هذه الصفقات تحقق نتائج جيدة على المدى الطويل.",
+        'rr_good': "💪 نسبة جيدة، استمر على هذا النحو!",
+        'rr_low': "🙂 النسبة منخفضة حاليًا. فكر في وضع TP بعيدًا أكثر.",
+        'rr_label': "📐 نسبة Risk:Reward — 1:{rr}",
+        'done': "هل تريد الحساب مرة أخرى؟ اضغط \"🚀 احساب\" 👇",
     },
     'lang_zh': {
         'name': "🇨🇳 中文",
-        'welcome': "Tilni tanlang / Select language:",
         'chosen': "✅ 已选择语言：中文",
-        'bal': "💰 请输入余额（例如：1000）：",
-        'risk': "📊 请输入风险百分比（例如：2）：",
-        'entry': "📈 请输入入场价格（Entry）：",
-        'sl': "🛑 请输入止损价格（Stop Loss）：",
-        'res': "✅ {inst} 的手数：",
-        'contact': "📩 联系方式：@Shukurillo_M",
+        'bal': "💰 太好了，我们开始吧！请输入余额（例如：1000）：",
+        'risk': "📊 很好！现在请输入风险百分比（例如：2）：",
+        'entry': "📈 不错！请输入入场价格（Entry）：",
+        'sl': "🛑 好的，现在请输入止损价格（Stop Loss）：",
+        'res': "✅ {inst} 的手数已计算好：",
+        'contact': "📩 有问题或建议？请联系：@Shukurillo_M",
         'calc': "🚀 计算",
         'contact_btn': "📩 联系",
         'set': "⚙️ 设置",
-        'instrument': "选择交易品种：",
-        'err_number': "⚠️ 请输入有效数字（例如：1000 或 1850.5）",
-        'err_zero_dist': "⚠️ 入场价和止损价不能相同，请重试。",
-        'err_state': "⚠️ 请先点击 /start。",
-        'err_positive': "⚠️ 数值必须大于零。",
+        'instrument': "我们要为哪个品种计算？👇",
+        'err_number': "🤔 这不像是个数字！请输入有效数字（例如：1000 或 1850.5）",
+        'err_zero_dist': "⚠️ 入场价和止损价相同了，请输入稍微不同的数值 🙂",
+        'err_state': "👋 请先点击 /start，我们一起开始吧！",
+        'err_positive': "🤔 数值必须大于零，再试一次吧？",
+        'ask_tp': "🎯 计算完成！想输入止盈（Take Profit）并查看风险回报比吗？",
+        'tp_yes': "✅ 好的，显示一下",
+        'tp_no': "❌ 不用了，这样就够了",
+        'enter_tp': "🎯 请输入止盈（Take Profit）价格：",
+        'rr_great': "🔥 非常棒的比例！这样的交易长期来看很有价值。",
+        'rr_good': "💪 不错的比例，继续保持！",
+        'rr_low': "🙂 目前比例有点低，可以考虑把止盈设得更远一些。",
+        'rr_label': "📐 风险回报比 — 1:{rr}",
+        'done': "还想再计算一次吗？点击 \"🚀 计算\" 👇",
     },
     'lang_es': {
         'name': "🇪🇸 Español",
-        'welcome': "Tilni tanlang / Select language:",
         'chosen': "✅ Idioma seleccionado: Español",
-        'bal': "💰 Ingrese su balance (ej: 1000):",
-        'risk': "📊 Ingrese el % de riesgo (ej: 2):",
-        'entry': "📈 Ingrese el precio de entrada (Entry):",
-        'sl': "🛑 Ingrese el precio de Stop Loss:",
-        'res': "✅ Tamaño de lote para {inst}:",
-        'contact': "📩 Contacto: @Shukurillo_M",
+        'bal': "💰 ¡Genial, comencemos! Ingrese su balance (ej: 1000):",
+        'risk': "📊 ¡Perfecto! Ahora ingrese el % de riesgo (ej: 2):",
+        'entry': "📈 ¡Bien! Ingrese el precio de entrada (Entry):",
+        'sl': "🛑 Listo, ahora ingrese el precio de Stop Loss:",
+        'res': "✅ Su tamaño de lote para {inst} está listo:",
+        'contact': "📩 ¿Preguntas o sugerencias? Escriba: @Shukurillo_M",
         'calc': "🚀 Calcular",
         'contact_btn': "📩 Contacto",
         'set': "⚙️ Ajustes",
-        'instrument': "Seleccione el instrumento:",
-        'err_number': "⚠️ Por favor ingrese un número válido (ej: 1000 o 1850.5)",
-        'err_zero_dist': "⚠️ Los precios de Entry y Stop Loss no pueden ser iguales. Intente de nuevo.",
-        'err_state': "⚠️ Por favor presione /start primero.",
-        'err_positive': "⚠️ El valor debe ser mayor que cero.",
+        'instrument': "¿Para qué instrumento calculamos? 👇",
+        'err_number': "🤔 Eso no parece un número. Por favor ingrese un número válido (ej: 1000 o 1850.5)",
+        'err_zero_dist': "⚠️ Los precios de Entry y Stop Loss son iguales. Ingrese un valor un poco diferente 🙂",
+        'err_state': "👋 Presione /start primero, ¡empecemos juntos!",
+        'err_positive': "🤔 El valor debe ser mayor que cero. ¿Intentamos de nuevo?",
+        'ask_tp': "🎯 ¡Excelente cálculo! ¿Quiere ingresar también el Take Profit y ver su ratio Risk:Reward?",
+        'tp_yes': "✅ Sí, muéstramelo",
+        'tp_no': "❌ No, es suficiente",
+        'enter_tp': "🎯 Ingrese el precio de Take Profit:",
+        'rr_great': "🔥 ¡Excelente ratio! Este tipo de operaciones rinden a largo plazo.",
+        'rr_good': "💪 Buen ratio, ¡sigue así!",
+        'rr_low': "🙂 El ratio es un poco bajo por ahora. Considere colocar el TP un poco más lejos.",
+        'rr_label': "📐 Ratio Risk:Reward — 1:{rr}",
+        'done': "¿Quiere calcular de nuevo? Toque \"🚀 Calcular\" 👇",
     },
     'lang_pt': {
         'name': "🇵🇹 Português",
-        'welcome': "Tilni tanlang / Select language:",
         'chosen': "✅ Idioma selecionado: Português",
-        'bal': "💰 Insira seu saldo (ex: 1000):",
-        'risk': "📊 Insira o % de risco (ex: 2):",
-        'entry': "📈 Insira o preço de entrada (Entry):",
-        'sl': "🛑 Insira o preço de Stop Loss:",
-        'res': "✅ Tamanho do lote para {inst}:",
-        'contact': "📩 Contato: @Shukurillo_M",
+        'bal': "💰 Ótimo, vamos começar! Insira seu saldo (ex: 1000):",
+        'risk': "📊 Perfeito! Agora insira o % de risco (ex: 2):",
+        'entry': "📈 Bom! Insira o preço de entrada (Entry):",
+        'sl': "🛑 Certo, agora insira o preço de Stop Loss:",
+        'res': "✅ Seu tamanho de lote para {inst} está pronto:",
+        'contact': "📩 Perguntas ou sugestões? Escreva: @Shukurillo_M",
         'calc': "🚀 Calcular",
         'contact_btn': "📩 Contato",
         'set': "⚙️ Configurações",
-        'instrument': "Selecione o instrumento:",
-        'err_number': "⚠️ Por favor insira um número válido (ex: 1000 ou 1850.5)",
-        'err_zero_dist': "⚠️ Os preços de Entry e Stop Loss não podem ser iguais. Tente novamente.",
-        'err_state': "⚠️ Por favor pressione /start primeiro.",
-        'err_positive': "⚠️ O valor deve ser maior que zero.",
+        'instrument': "Para qual instrumento vamos calcular? 👇",
+        'err_number': "🤔 Isso não parece um número. Insira um número válido (ex: 1000 ou 1850.5)",
+        'err_zero_dist': "⚠️ Os preços de Entry e Stop Loss ficaram iguais. Insira um valor um pouco diferente 🙂",
+        'err_state': "👋 Pressione /start primeiro, vamos começar juntos!",
+        'err_positive': "🤔 O valor deve ser maior que zero. Vamos tentar de novo?",
+        'ask_tp': "🎯 Ótimo cálculo! Quer inserir também o Take Profit e ver seu ratio Risk:Reward?",
+        'tp_yes': "✅ Sim, mostrar",
+        'tp_no': "❌ Não, já chega",
+        'enter_tp': "🎯 Insira o preço de Take Profit:",
+        'rr_great': "🔥 Excelente ratio! Esse tipo de operação compensa a longo prazo.",
+        'rr_good': "💪 Bom ratio, continue assim!",
+        'rr_low': "🙂 O ratio está um pouco baixo por agora. Considere colocar o TP um pouco mais distante.",
+        'rr_label': "📐 Ratio Risk:Reward — 1:{rr}",
+        'done': "Quer calcular novamente? Toque em \"🚀 Calcular\" 👇",
     },
     'lang_fr': {
         'name': "🇫🇷 Français",
-        'welcome': "Tilni tanlang / Select language:",
         'chosen': "✅ Langue sélectionnée : Français",
-        'bal': "💰 Entrez votre solde (ex: 1000):",
-        'risk': "📊 Entrez le % de risque (ex: 2):",
-        'entry': "📈 Entrez le prix d'entrée (Entry):",
-        'sl': "🛑 Entrez le prix du Stop Loss:",
-        'res': "✅ Taille du lot pour {inst}:",
-        'contact': "📩 Contact: @Shukurillo_M",
+        'bal': "💰 Parfait, commençons ! Entrez votre solde (ex: 1000):",
+        'risk': "📊 Super ! Entrez maintenant le % de risque (ex: 2):",
+        'entry': "📈 Bien ! Entrez le prix d'entrée (Entry):",
+        'sl': "🛑 Noté, entrez maintenant le prix du Stop Loss:",
+        'res': "✅ Votre taille de lot pour {inst} est prête:",
+        'contact': "📩 Des questions ? Écrivez-nous : @Shukurillo_M",
         'calc': "🚀 Calculer",
         'contact_btn': "📩 Contact",
         'set': "⚙️ Paramètres",
-        'instrument': "Sélectionnez l'instrument:",
-        'err_number': "⚠️ Veuillez entrer un nombre valide (ex: 1000 ou 1850.5)",
-        'err_zero_dist': "⚠️ Les prix Entry et Stop Loss ne peuvent pas être identiques. Réessayez.",
-        'err_state': "⚠️ Veuillez d'abord appuyer sur /start.",
-        'err_positive': "⚠️ La valeur doit être supérieure à zéro.",
+        'instrument': "Pour quel instrument calculons-nous ? 👇",
+        'err_number': "🤔 Cela ne ressemble pas à un nombre ! Entrez un nombre valide (ex: 1000 ou 1850.5)",
+        'err_zero_dist': "⚠️ Les prix Entry et Stop Loss sont identiques. Entrez une valeur légèrement différente 🙂",
+        'err_state': "👋 Appuyez d'abord sur /start, commençons ensemble !",
+        'err_positive': "🤔 La valeur doit être supérieure à zéro. On réessaie ?",
+        'ask_tp': "🎯 Excellent calcul ! Voulez-vous aussi entrer le Take Profit et voir votre ratio Risk:Reward ?",
+        'tp_yes': "✅ Oui, montrez-moi",
+        'tp_no': "❌ Non, ça suffit",
+        'enter_tp': "🎯 Entrez le prix du Take Profit:",
+        'rr_great': "🔥 Excellent ratio ! Ce type de trade est payant sur le long terme.",
+        'rr_good': "💪 Bon ratio, continuez comme ça !",
+        'rr_low': "🙂 Le ratio est un peu faible pour l'instant. Pensez à placer le TP un peu plus loin.",
+        'rr_label': "📐 Ratio Risk:Reward — 1:{rr}",
+        'done': "Vous voulez recalculer ? Appuyez sur \"🚀 Calculer\" 👇",
     },
     'lang_de': {
         'name': "🇩🇪 Deutsch",
-        'welcome': "Tilni tanlang / Select language:",
         'chosen': "✅ Sprache ausgewählt: Deutsch",
-        'bal': "💰 Geben Sie Ihr Guthaben ein (z.B. 1000):",
-        'risk': "📊 Geben Sie das Risiko in % ein (z.B. 2):",
-        'entry': "📈 Geben Sie den Einstiegspreis (Entry) ein:",
-        'sl': "🛑 Geben Sie den Stop-Loss-Preis ein:",
-        'res': "✅ Lotgröße für {inst}:",
-        'contact': "📩 Kontakt: @Shukurillo_M",
+        'bal': "💰 Super, legen wir los! Geben Sie Ihr Guthaben ein (z.B. 1000):",
+        'risk': "📊 Klasse! Geben Sie jetzt das Risiko in % ein (z.B. 2):",
+        'entry': "📈 Gut! Geben Sie den Einstiegspreis (Entry) ein:",
+        'sl': "🛑 Verstanden, geben Sie jetzt den Stop-Loss-Preis ein:",
+        'res': "✅ Ihre Lotgröße für {inst} ist fertig:",
+        'contact': "📩 Fragen oder Vorschläge? Schreiben Sie: @Shukurillo_M",
         'calc': "🚀 Berechnen",
         'contact_btn': "📩 Kontakt",
         'set': "⚙️ Einstellungen",
-        'instrument': "Instrument auswählen:",
-        'err_number': "⚠️ Bitte geben Sie eine gültige Zahl ein (z.B. 1000 oder 1850.5)",
-        'err_zero_dist': "⚠️ Entry- und Stop-Loss-Preise dürfen nicht gleich sein. Versuchen Sie es erneut.",
-        'err_state': "⚠️ Bitte drücken Sie zuerst /start.",
-        'err_positive': "⚠️ Der Wert muss größer als null sein.",
+        'instrument': "Für welches Instrument berechnen wir? 👇",
+        'err_number': "🤔 Das sieht nicht nach einer Zahl aus! Bitte geben Sie eine gültige Zahl ein (z.B. 1000 oder 1850.5)",
+        'err_zero_dist': "⚠️ Entry- und Stop-Loss-Preis sind gleich. Geben Sie bitte einen etwas anderen Wert ein 🙂",
+        'err_state': "👋 Bitte drücken Sie zuerst /start, lassen Sie uns gemeinsam starten!",
+        'err_positive': "🤔 Der Wert muss größer als null sein. Versuchen wir es noch einmal?",
+        'ask_tp': "🎯 Tolle Berechnung! Möchten Sie auch den Take Profit eingeben und Ihr Risk:Reward-Verhältnis sehen?",
+        'tp_yes': "✅ Ja, zeigen",
+        'tp_no': "❌ Nein, das reicht",
+        'enter_tp': "🎯 Geben Sie den Take-Profit-Preis ein:",
+        'rr_great': "🔥 Hervorragendes Verhältnis! Solche Trades zahlen sich langfristig aus.",
+        'rr_good': "💪 Gutes Verhältnis, weiter so!",
+        'rr_low': "🙂 Das Verhältnis ist momentan etwas niedrig. Überlegen Sie, den TP etwas weiter zu setzen.",
+        'rr_label': "📐 Risk:Reward-Verhältnis — 1:{rr}",
+        'done': "Nochmal berechnen? Tippen Sie auf \"🚀 Berechnen\" 👇",
     },
     'lang_ko': {
         'name': "🇰🇷 한국어",
-        'welcome': "Tilni tanlang / Select language:",
         'chosen': "✅ 언어가 선택되었습니다: 한국어",
-        'bal': "💰 잔액을 입력하세요 (예: 1000):",
-        'risk': "📊 리스크 %를 입력하세요 (예: 2):",
-        'entry': "📈 진입가(Entry)를 입력하세요:",
-        'sl': "🛑 손절가(Stop Loss)를 입력하세요:",
-        'res': "✅ {inst}의 로트 크기:",
-        'contact': "📩 문의: @Shukurillo_M",
+        'bal': "💰 좋아요, 시작해볼까요! 잔액을 입력하세요 (예: 1000):",
+        'risk': "📊 좋습니다! 이제 리스크 %를 입력하세요 (예: 2):",
+        'entry': "📈 좋아요! 진입가(Entry)를 입력하세요:",
+        'sl': "🛑 알겠습니다, 이제 손절가(Stop Loss)를 입력하세요:",
+        'res': "✅ {inst}의 로트 크기가 준비되었습니다:",
+        'contact': "📩 질문이나 제안이 있으신가요? 연락주세요: @Shukurillo_M",
         'calc': "🚀 계산하기",
         'contact_btn': "📩 문의",
         'set': "⚙️ 설정",
-        'instrument': "상품 선택:",
-        'err_number': "⚠️ 올바른 숫자를 입력해주세요 (예: 1000 또는 1850.5)",
-        'err_zero_dist': "⚠️ 진입가와 손절가는 같을 수 없습니다. 다시 시도해주세요.",
-        'err_state': "⚠️ 먼저 /start를 눌러주세요.",
-        'err_positive': "⚠️ 값은 0보다 커야 합니다.",
+        'instrument': "어떤 상품으로 계산할까요? 👇",
+        'err_number': "🤔 숫자가 아닌 것 같아요! 올바른 숫자를 입력해주세요 (예: 1000 또는 1850.5)",
+        'err_zero_dist': "⚠️ 진입가와 손절가가 같습니다. 조금 다른 값을 입력해주세요 🙂",
+        'err_state': "👋 먼저 /start를 눌러주세요, 함께 시작해봐요!",
+        'err_positive': "🤔 값은 0보다 커야 합니다. 다시 시도해볼까요?",
+        'ask_tp': "🎯 계산 완료! Take Profit도 입력해서 Risk:Reward 비율을 확인해보시겠어요?",
+        'tp_yes': "✅ 네, 보여주세요",
+        'tp_no': "❌ 아니요, 충분해요",
+        'enter_tp': "🎯 Take Profit 가격을 입력하세요:",
+        'rr_great': "🔥 훌륭한 비율이에요! 이런 거래는 장기적으로 좋은 결과를 가져옵니다.",
+        'rr_good': "💪 좋은 비율이에요, 계속 이렇게 해보세요!",
+        'rr_low': "🙂 비율이 조금 낮네요. TP를 조금 더 멀리 설정하는 것도 고려해보세요.",
+        'rr_label': "📐 Risk:Reward 비율 — 1:{rr}",
+        'done': "다시 계산하고 싶으신가요? \"🚀 계산하기\"를 눌러주세요 👇",
     },
     'lang_ja': {
         'name': "🇯🇵 日本語",
-        'welcome': "Tilni tanlang / Select language:",
         'chosen': "✅ 言語が選択されました：日本語",
-        'bal': "💰 残高を入力してください（例：1000）：",
-        'risk': "📊 リスク％を入力してください（例：2）：",
-        'entry': "📈 エントリー価格を入力してください：",
-        'sl': "🛑 ストップロス価格を入力してください：",
-        'res': "✅ {inst} のロットサイズ：",
-        'contact': "📩 連絡先：@Shukurillo_M",
+        'bal': "💰 いいですね、始めましょう！残高を入力してください（例：1000）：",
+        'risk': "📊 完璧です！次にリスク％を入力してください（例：2）：",
+        'entry': "📈 いいですね！エントリー価格を入力してください：",
+        'sl': "🛑 了解です、次にストップロス価格を入力してください：",
+        'res': "✅ {inst} のロットサイズが準備できました：",
+        'contact': "📩 ご質問やご提案がありますか？お気軽にご連絡ください：@Shukurillo_M",
         'calc': "🚀 計算する",
         'contact_btn': "📩 連絡先",
         'set': "⚙️ 設定",
-        'instrument': "通貨ペア・銘柄を選択：",
-        'err_number': "⚠️ 有効な数字を入力してください（例：1000 または 1850.5）",
-        'err_zero_dist': "⚠️ エントリー価格とストップロス価格は同じにできません。もう一度お試しください。",
-        'err_state': "⚠️ まず /start を押してください。",
-        'err_positive': "⚠️ 値は0より大きくなければなりません。",
+        'instrument': "どの銘柄で計算しますか？👇",
+        'err_number': "🤔 数字には見えませんね！有効な数字を入力してください（例：1000 または 1850.5）",
+        'err_zero_dist': "⚠️ エントリー価格とストップロス価格が同じです。少し異なる値を入力してください 🙂",
+        'err_state': "👋 まず /start を押してください、一緒に始めましょう！",
+        'err_positive': "🤔 値は0より大きくなければなりません。もう一度試しますか？",
+        'ask_tp': "🎯 計算完了！Take Profitも入力してRisk:Reward比率を見てみますか？",
+        'tp_yes': "✅ はい、見せてください",
+        'tp_no': "❌ いいえ、これで十分です",
+        'enter_tp': "🎯 Take Profitの価格を入力してください：",
+        'rr_great': "🔥 素晴らしい比率です！このようなトレードは長期的に良い結果をもたらします。",
+        'rr_good': "💪 良い比率ですね、このまま続けましょう！",
+        'rr_low': "🙂 比率は今のところ少し低めです。TPをもう少し遠くに設定することを検討してみてください。",
+        'rr_label': "📐 Risk:Reward比率 — 1:{rr}",
+        'done': "もう一度計算しますか？「🚀 計算する」をタップしてください 👇",
     },
 }
 
@@ -253,9 +354,17 @@ LANG_ORDER = [
     'lang_fr', 'lang_de', 'lang_ko', 'lang_ja',
 ]
 
-INSTRUMENT_PIPS = {
-    "XAUUSD": 10.0, "XAGUSD": 50.0, "BTCUSD": 1.0, "ETHUSD": 1.0,
-    "EURUSD": 10.0, "GBPUSD": 10.0, "NAS100": 1.0, "SPX500": 1.0,
+# Har bir instrumentning 1 standart lot hajmi (contract size).
+# Lot = (Balans * Risk%) / (Entry-SL masofasi * Contract_size)
+INSTRUMENT_CONTRACT_SIZE = {
+    "XAUUSD": 100,      # 1 lot = 100 untsiya oltin
+    "XAGUSD": 5000,     # 1 lot = 5000 untsiya kumush
+    "BTCUSD": 1,        # 1 lot = 1 BTC
+    "ETHUSD": 1,        # 1 lot = 1 ETH
+    "EURUSD": 100000,   # 1 lot = 100,000 EUR
+    "GBPUSD": 100000,   # 1 lot = 100,000 GBP
+    "NAS100": 1,        # 1 lot = 1 kontrakt (broker'ga qarab farq qilishi mumkin)
+    "SPX500": 1,        # 1 lot = 1 kontrakt (broker'ga qarab farq qilishi mumkin)
 }
 
 user_state = {}
@@ -285,20 +394,45 @@ def get_main_kb(lang_code):
 
 def get_instrument_kb():
     m = types.InlineKeyboardMarkup(row_width=2)
-    buttons = [types.InlineKeyboardButton(i, callback_data=i) for i in INSTRUMENT_PIPS]
+    buttons = [types.InlineKeyboardButton(i, callback_data=i) for i in INSTRUMENT_CONTRACT_SIZE]
     m.add(*buttons)
+    return m
+
+
+def get_tp_kb(lang_code):
+    l = LANG[lang_code]
+    m = types.InlineKeyboardMarkup(row_width=2)
+    m.add(
+        types.InlineKeyboardButton(l['tp_yes'], callback_data='tp_yes'),
+        types.InlineKeyboardButton(l['tp_no'], callback_data='tp_no'),
+    )
     return m
 
 
 def safe_float(text):
     """Matnni floatga aylantiradi, bo'lmasa None qaytaradi (xato chiqarmaydi)."""
     try:
-        # vergulni nuqtaga almashtirib ko'ramiz, chunki ba'zi tillarda vergul ishlatiladi
         cleaned = text.strip().replace(',', '.')
         value = float(cleaned)
         return value
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, TypeError):
         return None
+
+
+def send_calc_emoji(chat_id):
+    """Hisoblash tugashidan oldin random emoji yuboradi va 1 soniya kutadi."""
+    emoji = random.choice(CALC_EMOJIS)
+    bot.send_message(chat_id, emoji)
+    time.sleep(1)
+
+
+def send_lot_result(chat_id, lang_code, with_done_text=True):
+    """Lot natijasini chiqaradi."""
+    l = LANG[lang_code]
+    data = user_state[chat_id]
+    bot.send_message(chat_id, l['res'].format(inst=data['inst']) + f" *{round(data['lot'], 2)}*", parse_mode="Markdown")
+    if with_done_text:
+        bot.send_message(chat_id, l['done'])
 
 
 @bot.message_handler(commands=['start'])
@@ -316,13 +450,13 @@ def set_lang(call):
     bot.send_message(cid, t(cid, 'chosen'), reply_markup=get_main_kb(call.data))
 
 
-@bot.callback_query_handler(func=lambda call: call.data in INSTRUMENT_PIPS)
+@bot.callback_query_handler(func=lambda call: call.data in INSTRUMENT_CONTRACT_SIZE)
 def set_inst(call):
     cid = call.message.chat.id
     bot.answer_callback_query(call.id)
 
     if cid not in user_state or 'lang' not in user_state[cid]:
-        bot.send_message(cid, "⚠️ Iltimos, avval /start buyrug'ini bosing.")
+        bot.send_message(cid, "👋 Avval /start buyrug'ini bosing, birga boshlaymiz!")
         return
 
     user_state[cid]['inst'] = call.data
@@ -330,11 +464,30 @@ def set_inst(call):
     bot.register_next_step_handler(call.message, get_balance)
 
 
+@bot.callback_query_handler(func=lambda call: call.data in ('tp_yes', 'tp_no'))
+def handle_tp_choice(call):
+    cid = call.message.chat.id
+    bot.answer_callback_query(call.id)
+
+    if cid not in user_state or 'lang' not in user_state[cid]:
+        bot.send_message(cid, "👋 Avval /start buyrug'ini bosing, birga boshlaymiz!")
+        return
+
+    lang_code = user_state[cid]['lang']
+
+    if call.data == 'tp_no':
+        send_calc_emoji(cid)
+        send_lot_result(cid, lang_code)
+    else:
+        bot.send_message(cid, t(cid, 'enter_tp'))
+        bot.register_next_step_handler(call.message, get_tp)
+
+
 @bot.message_handler(func=lambda message: True)
 def menu(message):
     cid = message.chat.id
     if cid not in user_state or 'lang' not in user_state[cid]:
-        bot.send_message(cid, "⚠️ Iltimos, avval /start buyrug'ini bosing.")
+        bot.send_message(cid, "👋 Avval /start buyrug'ini bosing, birga boshlaymiz!")
         return
 
     l = LANG[user_state[cid]['lang']]
@@ -414,8 +567,51 @@ def get_sl(m):
         bot.register_next_step_handler(m, get_sl)
         return
 
-    lot = (data['bal'] * (data['risk'] / 100)) / (dist * INSTRUMENT_PIPS[data['inst']])
-    bot.send_message(cid, t(cid, 'res').format(inst=data['inst']) + f" {round(lot, 2)}")
+    data['sl'] = value
+    lot = (data['bal'] * (data['risk'] / 100)) / (dist * INSTRUMENT_CONTRACT_SIZE[data['inst']])
+    data['lot'] = lot
+
+    lang_code = data['lang']
+    bot.send_message(cid, t(cid, 'ask_tp'), reply_markup=get_tp_kb(lang_code))
+
+
+def get_tp(m):
+    cid = m.chat.id
+    if cid not in user_state or 'lang' not in user_state[cid]:
+        return
+
+    value = safe_float(m.text)
+    if value is None or value <= 0:
+        bot.send_message(cid, t(cid, 'err_number') if value is None else t(cid, 'err_positive'))
+        bot.register_next_step_handler(m, get_tp)
+        return
+
+    data = user_state[cid]
+    lang_code = data['lang']
+
+    risk_dist = abs(data['entry'] - data['sl'])
+    reward_dist = abs(value - data['entry'])
+
+    if reward_dist == 0:
+        bot.send_message(cid, t(cid, 'err_zero_dist'))
+        bot.register_next_step_handler(m, get_tp)
+        return
+
+    rr = round(reward_dist / risk_dist, 2)
+
+    send_calc_emoji(cid)
+    send_lot_result(cid, lang_code, with_done_text=False)
+
+    l = LANG[lang_code]
+    if rr >= 3:
+        feeling = l['rr_great']
+    elif rr >= 1.5:
+        feeling = l['rr_good']
+    else:
+        feeling = l['rr_low']
+
+    bot.send_message(cid, l['rr_label'].format(rr=rr) + "\n" + feeling)
+    bot.send_message(cid, l['done'])
 
 
 @server.route('/' + TOKEN, methods=['POST'])
@@ -435,3 +631,4 @@ def index():
 
 if __name__ == "__main__":
     server.run(host="0.0.0.0", port=int(os.environ.get('PORT', 10000)))
+
